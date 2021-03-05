@@ -1,7 +1,5 @@
 package com.shinow.oasdoc.gradle.plugin
 
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonObject
 import khttp.responses.Response
 import org.awaitility.Durations
 import org.awaitility.core.ConditionTimeoutException
@@ -21,11 +19,18 @@ import java.time.temporal.ChronoUnit.SECONDS
 open class OpenApiGeneratorTask : DefaultTask() {
     @get:Input
     val apiDocsUrl: Property<String> = project.objects.property(String::class.java)
+
     @get:Input
     val outputFileName: Property<String> = project.objects.property(String::class.java)
+
     @get:OutputDirectory
     val outputDir: DirectoryProperty = project.objects.directoryProperty()
+
     private val waitTimeInSeconds: Property<Int> = project.objects.property(Int::class.java)
+
+    private val yapiOrigin: Property<String> = project.objects.property(String::class.java)
+
+    private val yapiProjectToken: Property<String> = project.objects.property(String::class.java)
 
     init {
         description = OPEN_API_TASK_DESCRIPTION
@@ -43,10 +48,22 @@ open class OpenApiGeneratorTask : DefaultTask() {
         outputFileName.set(extension.outputFileName.getOrElse(DEFAULT_OPEN_API_FILE_NAME))
         outputDir.set(extension.outputDir.getOrElse(defaultOutputDir.get()))
         waitTimeInSeconds.set(extension.waitTimeInSeconds.getOrElse(DEFAULT_WAIT_TIME_IN_SECONDS))
+
+        yapiOrigin.set(
+            if (extension.yapiOrigin.get().endsWith("/"))
+                extension.yapiOrigin.get().substring(0, extension.yapiOrigin.get().length - 1)
+            else
+                extension.yapiOrigin.get()
+        )
+        yapiProjectToken.set(extension.yapiProjectToken.get())
+        if ((yapiOrigin.isPresent && !yapiProjectToken.isPresent) || (!yapiOrigin.isPresent && yapiProjectToken.isPresent)) {
+            throw GradleException("Uploading OpenApi document requires both \"yapiOrigin\" and \"yapiProjectoToken\" parameters.")
+        }
     }
 
     @TaskAction
     fun execute() {
+        val apiDocs: String
         try {
             await ignoreException ConnectException::class withPollInterval Durations.ONE_SECOND atMost Duration.of(
                 waitTimeInSeconds.get().toLong(),
@@ -60,19 +77,38 @@ open class OpenApiGeneratorTask : DefaultTask() {
             val response: Response = khttp.get(apiDocsUrl.get())
 
             val isYaml = apiDocsUrl.get().toLowerCase().contains(".yaml")
-            val apiDocs = if (isYaml) response.text else prettifyJson(response)
+            apiDocs = if (isYaml) response.text else response.jsonObject.toString()
 
             val outputFile = outputDir.file(outputFileName.get()).get().asFile
             outputFile.writeText(apiDocs)
         } catch (e: ConditionTimeoutException) {
-            this.logger.error("Unable to connect to ${apiDocsUrl.get()} waited for ${waitTimeInSeconds.get()} seconds", e)
+            this.logger.error(
+                "Unable to connect to ${apiDocsUrl.get()} waited for ${waitTimeInSeconds.get()} seconds",
+                e
+            )
             throw GradleException("Unable to connect to ${apiDocsUrl.get()} waited for ${waitTimeInSeconds.get()} seconds")
+        }
+
+        if (yapiOrigin.isPresent && yapiProjectToken.isPresent && apiDocs.isNotEmpty()) {
+            uploadToYapi(apiDocs)
         }
     }
 
-    private fun prettifyJson(response: Response): String {
-        val gson = GsonBuilder().setPrettyPrinting().create();
-        val googleJsonObject = gson.fromJson(response.jsonObject.toString(), JsonObject::class.java)
-        return gson.toJson(googleJsonObject)
+    private fun uploadToYapi(apiDocs: String) {
+        val response = khttp.post(
+            url = "$yapiOrigin/api/open/import_data",
+            data = mapOf(
+                "type" to "swagger",
+                "merge" to "merge",
+                "token" to yapiProjectToken,
+                "json" to apiDocs
+            )
+        )
+        val responseJson = response.jsonObject
+        if (responseJson["errcode"] == 0) {
+            logger.info(responseJson["errmsg"].toString())
+        } else {
+            throw GradleException(responseJson.toString())
+        }
     }
 }

@@ -14,3 +14,6 @@ const val DEFAULT_WAIT_TIME_IN_SECONDS = 30
 
 const val SPRING_BOOT_PLUGIN = "org.springframework.boot"
 const val PROCESS_PLUGIN = "com.github.johnrengelman.processes"
+
+//YAPI
+const val YAPI_OAS_DOC_IMPORT_PATH = "/api/open/import_data"

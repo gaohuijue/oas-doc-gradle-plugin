@@ -11,4 +11,7 @@ open class OpenApiExtension @Inject constructor(project: Project) {
     val outputDir: DirectoryProperty = project.objects.directoryProperty()
     val waitTimeInSeconds: Property<Int> = project.objects.property(Int::class.java)
     val forkProperties: Property<Any> = project.objects.property(Any::class.java)
+
+    val yapiOrigin: Property<String> = project.objects.property(String::class.java)
+    val yapiProjectToken: Property<String> = project.objects.property(String::class.java)
 }
