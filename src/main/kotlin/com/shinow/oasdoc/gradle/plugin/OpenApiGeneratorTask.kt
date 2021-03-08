@@ -49,14 +49,17 @@ open class OpenApiGeneratorTask : DefaultTask() {
         outputDir.set(extension.outputDir.getOrElse(defaultOutputDir.get()))
         waitTimeInSeconds.set(extension.waitTimeInSeconds.getOrElse(DEFAULT_WAIT_TIME_IN_SECONDS))
 
+        val yapiOriginValue = extension.yapiOrigin.getOrElse("")
         yapiOrigin.set(
-            if (extension.yapiOrigin.get().endsWith("/"))
-                extension.yapiOrigin.get().substring(0, extension.yapiOrigin.get().length - 1)
+            if (yapiOriginValue.endsWith("/"))
+                yapiOriginValue.substring(0, extension.yapiOrigin.get().length - 1)
             else
-                extension.yapiOrigin.get()
+                yapiOriginValue
         )
-        yapiProjectToken.set(extension.yapiProjectToken.get())
-        if ((yapiOrigin.isPresent && !yapiProjectToken.isPresent) || (!yapiOrigin.isPresent && yapiProjectToken.isPresent)) {
+        yapiProjectToken.set(extension.yapiProjectToken.getOrElse(""))
+        if ((yapiOrigin.get().isEmpty() && yapiProjectToken.get().isNotEmpty())
+            || (yapiOrigin.get().isNotEmpty() && yapiOrigin.get().isEmpty())
+        ) {
             throw GradleException("Uploading OpenApi document requires both \"yapiOrigin\" and \"yapiProjectoToken\" parameters.")
         }
     }
@@ -89,18 +92,18 @@ open class OpenApiGeneratorTask : DefaultTask() {
             throw GradleException("Unable to connect to ${apiDocsUrl.get()} waited for ${waitTimeInSeconds.get()} seconds")
         }
 
-        if (yapiOrigin.isPresent && yapiProjectToken.isPresent && apiDocs.isNotEmpty()) {
+        if (yapiOrigin.get().isNotEmpty() && yapiProjectToken.get().isNotEmpty() && apiDocs.isNotEmpty()) {
             uploadToYapi(apiDocs)
         }
     }
 
     private fun uploadToYapi(apiDocs: String) {
         val response = khttp.post(
-            url = "$yapiOrigin/api/open/import_data",
+            url = "${yapiOrigin.get()}/api/open/import_data",
             data = mapOf(
                 "type" to "swagger",
                 "merge" to "merge",
-                "token" to yapiProjectToken,
+                "token" to yapiProjectToken.get(),
                 "json" to apiDocs
             )
         )
